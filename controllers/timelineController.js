@@ -1,5 +1,6 @@
 const Profile = require('../models/Profile');
 const Interaction = require('../models/Interaction');
+const User = require('../models/User');
 
 // Simple compatibility calculation based on shared interests
 const calculateCompatibility = (userInterests, potentialInterests) => {
@@ -93,13 +94,34 @@ exports.handleInteraction = async (req, res) => {
 
         // Check for a match (if it's a like or superlike)
         let isMatch = false;
-        if (type === 'like' || type === 'superlike') {
-            const reverseInteraction = await Interaction.findOne({
-                fromUserId: toUserId,
-                toUserId: fromUserId,
-                type: { $in: ['like', 'superlike'] }
-            });
-            if (reverseInteraction) isMatch = true;
+
+        const currentUser = await User.findById(fromUserId);
+        const targetUser = await User.findById(toUserId);
+
+        if (currentUser && targetUser) {
+            if (type === 'like' || type === 'superlike') {
+                if (!currentUser.likesSent.some(id => id.toString() === toUserId.toString())) {
+                    currentUser.likesSent.push(toUserId);
+                }
+                if (!targetUser.likesReceived.some(id => id.toString() === fromUserId.toString())) {
+                    targetUser.likesReceived.push(fromUserId);
+                }
+
+                const reverseInteraction = await Interaction.findOne({
+                    fromUserId: toUserId,
+                    toUserId: fromUserId,
+                    type: { $in: ['like', 'superlike'] }
+                });
+
+                if (reverseInteraction) {
+                    isMatch = true;
+                    if (!currentUser.matches.some(id => id.toString() === toUserId.toString())) currentUser.matches.push(toUserId);
+                    if (!targetUser.matches.some(id => id.toString() === fromUserId.toString())) targetUser.matches.push(fromUserId);
+                }
+
+                await currentUser.save();
+                await targetUser.save();
+            }
         }
 
         res.json({ interaction, isMatch });
